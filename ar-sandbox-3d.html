@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Caja de Arena Virtual 3D — Modelo Digital de Elevación Interactivo</title>
+<meta name="description" content="Simulador 3D de caja de arena aumentada: el mouse esculpe el relieve al pasar sobre el terreno, con curvas de nivel y agua en tiempo real.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#181a1c;
+    --panel:#212427;
+    --panel-2:#262a2d;
+    --line:#34383c;
+    --brass:#c9a227;
+    --brass-dim:#8a7220;
+    --paper:#ece7dd;
+    --muted:#8f969c;
+    --lower:#a85d3d;
+    --focus:#e8c96a;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:34px 34px;
+    background-position:-1px -1px;
+    background-attachment:fixed;
+  }
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background:radial-gradient(ellipse at 50% -10%, rgba(201,162,39,0.06), transparent 55%);
+    pointer-events:none;
+  }
+  header{
+    padding:22px 28px 16px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(38,42,45,0.6), transparent);
+  }
+  .headerRow{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:16px;
+  }
+  .langToggle{
+    display:flex;
+    flex-shrink:0;
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .langBtn{
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.05em;
+    background:var(--panel-2);
+    border:none;
+    color:var(--muted);
+    padding:7px 12px;
+    cursor:pointer;
+  }
+  .langBtn + .langBtn{ border-left:1px solid var(--line); }
+  .langBtn.active{ background:rgba(201,162,39,0.14); color:var(--brass); }
+  .langBtn:hover{ color:var(--paper); }
+  .eyebrow{
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .eyebrow::before{
+    content:"";
+    width:18px;height:1px;
+    background:var(--brass-dim);
+    display:inline-block;
+  }
+  h1{
+    margin:8px 0 4px;
+    font-family:'Space Mono',monospace;
+    font-weight:700;
+    font-size:clamp(20px,3vw,30px);
+    letter-spacing:-0.01em;
+  }
+  header p.sub{
+    margin:0;
+    color:var(--muted);
+    font-size:13.5px;
+    max-width:680px;
+    line-height:1.5;
+  }
+  main{
+    flex:1;
+    display:grid;
+    grid-template-columns:1fr 300px;
+    gap:16px;
+    padding:16px 28px 8px;
+    min-height:0;
+  }
+  @media (max-width:860px){
+    main{grid-template-columns:1fr; min-height:auto;}
+    .stage{min-height:60vh;}
+    .panel{overflow-y:visible; max-height:none;}
+  }
+  .stage{
+    position:relative;
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    background:#0f1113;
+    overflow:hidden;
+    min-height:440px;
+    display:flex;
+  }
+  canvas#sandbox{
+    width:100%;
+    height:100%;
+    display:block;
+    touch-action:none;
+  }
+  .readout{
+    position:absolute;
+    top:10px; left:10px;
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    background:rgba(15,17,19,0.72);
+    border:1px solid var(--line);
+    padding:6px 10px;
+    border-radius:var(--radius);
+    color:var(--paper);
+    line-height:1.6;
+    pointer-events:none;
+    backdrop-filter:blur(2px);
+  }
+  .readout b{color:var(--brass);font-weight:700;}
+  .hint{
+    position:absolute;
+    top:10px; right:10px;
+    font-family:'Space Mono',monospace;
+    font-size:10.5px;
+    background:rgba(15,17,19,0.72);
+    border:1px solid var(--line);
+    padding:6px 10px;
+    border-radius:var(--radius);
+    color:var(--muted);
+    line-height:1.6;
+    pointer-events:none;
+    text-align:right;
+    max-width:200px;
+  }
+  .legend{
+    position:absolute;
+    bottom:10px; left:10px; right:10px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    color:var(--muted);
+    pointer-events:none;
+  }
+  .legend .bar{
+    flex:1;
+    height:8px;
+    border-radius:2px;
+    border:1px solid rgba(0,0,0,0.4);
+  }
+  .panel{
+    border:1px solid var(--line);
+    background:var(--panel);
+    border-radius:var(--radius);
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    overflow-y:auto;
+  }
+  .group{
+    border-top:1px solid var(--line);
+    padding-top:14px;
+  }
+  .group:first-child{border-top:none;padding-top:0;}
+  .group-label{
+    font-family:'Space Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:9px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .toolrow{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+  }
+  button.tool{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    font-weight:600;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--paper);
+    padding:8px 6px;
+    border-radius:var(--radius);
+    cursor:pointer;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  button.tool:hover{border-color:var(--brass-dim);}
+  button.tool.active{
+    background:rgba(201,162,39,0.12);
+    border-color:var(--brass);
+    color:var(--brass);
+  }
+  button.tool.active[data-tool="lower"]{
+    background:rgba(168,93,61,0.14);
+    border-color:var(--lower);
+    color:#e0a082;
+  }
+  button.full{
+    grid-column:1 / -1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    font-weight:600;
+    padding:9px;
+    border-radius:var(--radius);
+    cursor:pointer;
+    margin-top:6px;
+  }
+  button.full:hover{border-color:var(--brass-dim);}
+  button.full.primary{
+    background:var(--brass);
+    color:#20200f;
+    border-color:var(--brass);
+  }
+  button.full.primary:hover{background:var(--focus);}
+  label.field{
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:11px;
+  }
+  label.field:last-child{margin-bottom:0;}
+  label.field .val{
+    font-family:'Space Mono',monospace;
+    color:var(--paper);
+    float:right;
+  }
+  input[type="range"]{
+    -webkit-appearance:none;
+    width:100%;
+    height:3px;
+    background:var(--line);
+    border-radius:2px;
+    outline:none;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:13px;height:13px;
+    border-radius:50%;
+    background:var(--brass);
+    border:2px solid #20200f;
+    cursor:pointer;
+    margin-top:-1px;
+  }
+  input[type="range"]:focus-visible{outline:2px solid var(--focus); outline-offset:4px;}
+  .switch-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-size:12.5px;
+    color:var(--paper);
+    padding:2px 0;
+  }
+  .switch{
+    position:relative;
+    width:34px;height:19px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .switch::after{
+    content:"";
+    position:absolute;
+    top:1px; left:1px;
+    width:15px;height:15px;
+    border-radius:50%;
+    background:var(--muted);
+    transition:transform .15s, background .15s;
+  }
+  .switch.on{border-color:var(--brass-dim); background:rgba(201,162,39,0.12);}
+  .switch.on::after{transform:translateX(15px); background:var(--brass);}
+  footer{
+    padding:12px 28px 18px;
+    color:var(--muted);
+    font-size:11.5px;
+    font-family:'Space Mono',monospace;
+    display:flex;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  footer a{color:var(--brass); text-decoration:none;}
+  footer a:hover{text-decoration:underline;}
+  .loading{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Mono',monospace;
+    font-size:12px;
+    color:var(--muted);
+    background:#0f1113;
+    z-index:5;
+  }
+  .stage, canvas#sandbox{
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  @media (pointer:coarse){
+    button.tool{ padding:12px 6px; font-size:13.5px; }
+    button.full{ padding:13px; font-size:13.5px; }
+    .switch{ width:42px; height:24px; }
+    .switch::after{ width:20px; height:20px; }
+    .switch.on::after{ transform:translateX(18px); }
+    input[type="range"]{ height:5px; }
+    input[type="range"]::-webkit-slider-thumb{ width:20px; height:20px; margin-top:-2px; }
+    .panel{ gap:20px; }
+    .hint{ max-width:150px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="headerRow">
+    <div>
+      <div class="eyebrow" data-i18n="eyebrow">Modelo digital de elevación / relieve 3D</div>
+      <h1 data-i18n="title">Caja de Arena Virtual — 3D</h1>
+      <p class="sub" data-i18n="sub">Pasa el cursor sobre el terreno para levantarlo o hundirlo automáticamente, sin necesidad de hacer clic — como la mano sobre la arena real. El mar ocupa siempre la cota más baja (0 m) y se mueve con oleaje. Arrastra para rotar la vista y usa la rueda para acercar. En celular: un dedo esculpe, dos dedos rotan y hacen zoom.</p>
+    </div>
+    <div class="langToggle" id="langToggle">
+      <button class="langBtn active" data-lang="es">ES</button>
+      <button class="langBtn" data-lang="en">EN</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="stage" id="stage">
+    <div class="loading" id="loading" data-i18n="loading">Cargando motor 3D…</div>
+    <canvas id="sandbox"></canvas>
+    <div class="readout" id="readout"><span data-i18n="labelX">X</span> <b id="rx">—</b> &nbsp; <span data-i18n="labelY">Y</span> <b id="ry">—</b><br><span data-i18n="labelElev">Elevación</span> <b id="rz">—</b> m</div>
+    <div class="hint" id="hint">Arrastrar = rotar vista<br>Rueda = zoom<br>Shift + pasar = modo inverso</div>
+    <div class="legend">
+      <span id="legMin" data-i18n="legMin">0 m · mar</span>
+      <div class="bar" id="legBar"></div>
+      <span id="legMax">50 m</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="group">
+      <div class="group-label" data-i18n="toolLabel">Herramienta (se aplica al pasar el mouse)</div>
+      <div class="toolrow">
+        <button class="tool active" data-tool="raise" data-i18n="toolRaise">▲ Levantar</button>
+        <button class="tool" data-tool="lower" data-i18n="toolLower">▼ Hundir</button>
+        <button class="tool" data-tool="smooth" data-i18n="toolSmooth">〰 Suavizar</button>
+        <button class="tool" data-tool="level" data-i18n="toolLevel">▬ Nivelar</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-label" data-i18n="liveLabel">Escultura en vivo</div>
+      <div class="switch-row">
+        <span data-i18n="liveDesc">Activar al pasar el mouse</span>
+        <div class="switch on" id="swLive"></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-label" data-i18n="brushLabel">Pincel</div>
+      <label class="field"><span data-i18n="brushSize">Tamaño</span> <span class="val" id="vBrush">18</span>
+        <input type="range" id="brush" min="4" max="45" value="18">
+      </label>
+      <label class="field"><span data-i18n="brushStrength">Fuerza</span> <span class="val" id="vStrength">40</span>
+        <input type="range" id="strength" min="5" max="100" value="40">
+      </label>
+    </div>
+
+    <div class="group">
+      <div class="group-label" data-i18n="contourLabel">Curvas de nivel</div>
+      <div class="switch-row">
+        <span data-i18n="contourDesc">Mostrar curvas</span>
+        <div class="switch on" id="swContour"></div>
+      </div>
+      <label class="field" style="margin-top:10px;"><span data-i18n="intervalLabel">Equidistancia</span> <span class="val" id="vInterval">5</span> m
+        <input type="range" id="interval" min="2" max="10" value="5">
+      </label>
+    </div>
+
+    <div class="group">
+      <div class="group-label" data-i18n="seaLabel">Mar</div>
+      <div class="switch-row">
+        <span data-i18n="seaDesc">Mostrar mar (nivel 0 m)</span>
+        <div class="switch on" id="swWater"></div>
+      </div>
+      <label class="field" style="margin-top:10px;"><span data-i18n="waveLabel">Oleaje</span> <span class="val" id="vWater">50</span>
+        <input type="range" id="waterLevel" min="0" max="100" value="50">
+      </label>
+    </div>
+
+    <div class="group">
+      <div class="group-label" data-i18n="demLabel">Terreno real (DEM)</div>
+      <button class="full" id="btnLoadDem" data-i18n="demButton">Cargar imagen de elevación</button>
+      <input type="file" id="demInput" accept="image/*" style="display:none;">
+      <p style="font-size:11px; color:var(--muted); line-height:1.5; margin:8px 0 0;" data-i18n="demHint">
+        Sube una imagen en escala de grises (blanco = más alto). Puedes exportarla desde QGIS: Ráster → tu DEM → Exportar → PNG con rampa de grises.
+      </p>
+    </div>
+
+    <div class="group">
+      <div class="group-label" data-i18n="cutfillLabel">Corte y relleno</div>
+      <label class="field"><span data-i18n="cellSizeLabel">Tamaño de celda</span> <span class="val" id="vCell">10</span> m
+        <input type="range" id="cellSize" min="1" max="50" value="10">
+      </label>
+      <button class="full" id="btnBaseline" style="margin-top:2px;" data-i18n="baselineButton">Fijar estado base aquí</button>
+      <div style="font-family:'Space Mono',monospace; font-size:11.5px; margin-top:10px; line-height:1.8;">
+        <span data-i18n="cutLabel">Corte:</span> <span id="volCut" style="color:var(--lower);">0</span> m³<br>
+        <span data-i18n="fillLabel">Relleno:</span> <span id="volFill" style="color:var(--brass);">0</span> m³<br>
+        <span data-i18n="netLabel">Neto:</span> <span id="volNet">0</span> m³
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="switch-row">
+        <span data-i18n="spinLabel">Rotación automática</span>
+        <div class="switch" id="swSpin"></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <button class="full primary" id="btnReset" data-i18n="resetButton">Generar terreno nuevo</button>
+      <button class="full" id="btnFlat" data-i18n="flatButton">Aplanar todo</button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span data-i18n="footerHint">El mouse esculpe el relieve sin clic; arrastra para rotar la cámara. En celular: un dedo esculpe, dos dedos rotan.</span>
+  <span data-i18n="footerCredit">Hecho por <a href="https://www.instagram.com/latopobyisa" target="_blank" rel="noopener">@latopobyisa</a></span>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Grid setup ----------
+  const COLS = 100, ROWS = 64;
+  const N = COLS * ROWS;
+  const HEIGHT_SCALE = 16;
+  let height = new Float32Array(N);
+  let dirty = true;
+
+  const idx = (x,y) => y*COLS + x;
+  function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+
+  let originalHeight = new Float32Array(N);
+  function snapshotBaseline(){ originalHeight.set(height); }
+
+  // ---------- Terrain generation ----------
+  function randomBumps(seedCount){
+    height.fill(0.32);
+    for(let i=0;i<seedCount;i++){
+      const cx = Math.random()*COLS;
+      const cy = Math.random()*ROWS;
+      const r = 10 + Math.random()*22;
+      const amp = (Math.random()*2-1) * 0.42;
+      for(let y=0;y<ROWS;y++){
+        for(let x=0;x<COLS;x++){
+          const dx=x-cx, dy=y-cy;
+          const d2=dx*dx+dy*dy;
+          const g = Math.exp(-d2/(2*r*r));
+          height[idx(x,y)] += amp*g;
+        }
+      }
+    }
+    for(let i=0;i<N;i++) height[i] = clamp(height[i],0,1);
+    dirty = true;
+    snapshotBaseline();
+  }
+  function flattenAll(){ height.fill(0.35); dirty = true; snapshotBaseline(); }
+
+  // ---------- Brush ----------
+  let tool = "raise";
+  let brushSize = 18;
+  let brushStrength = 40;
+  let liveSculpt = true;
+
+  function applyBrush(gx, gy, mode, invert){
+    const r = brushSize/2;
+    const r2 = r*r;
+    const x0 = Math.max(0, Math.floor(gx-r));
+    const x1 = Math.min(COLS-1, Math.ceil(gx+r));
+    const y0 = Math.max(0, Math.floor(gy-r));
+    const y1 = Math.min(ROWS-1, Math.ceil(gy+r));
+    const strength = brushStrength/100;
+    let effectiveMode = mode;
+    if(invert){
+      if(mode==="raise") effectiveMode="lower";
+      else if(mode==="lower") effectiveMode="raise";
+    }
+    let targetVal = 0;
+    if(effectiveMode === "level"){
+      targetVal = height[idx(Math.round(clamp(gx,0,COLS-1)), Math.round(clamp(gy,0,ROWS-1)))];
+    }
+    for(let y=y0;y<=y1;y++){
+      for(let x=x0;x<=x1;x++){
+        const dx=x-gx, dy=y-gy;
+        const d2=dx*dx+dy*dy;
+        if(d2>r2) continue;
+        const falloff = Math.exp(-d2/(2*(r*0.5)*(r*0.5)));
+        const i = idx(x,y);
+        if(effectiveMode==="raise"){
+          height[i] = clamp(height[i] + falloff*strength*0.025, 0, 1);
+        } else if(effectiveMode==="lower"){
+          height[i] = clamp(height[i] - falloff*strength*0.025, 0, 1);
+        } else if(effectiveMode==="smooth"){
+          const n = idx(clamp(x-1,0,COLS-1),y);
+          const s = idx(clamp(x+1,0,COLS-1),y);
+          const w = idx(x,clamp(y-1,0,ROWS-1));
+          const e = idx(x,clamp(y+1,0,ROWS-1));
+          const avg = (height[n]+height[s]+height[w]+height[e])/4;
+          height[i] = lerp(height[i], avg, falloff*0.4);
+        } else if(effectiveMode==="level"){
+          height[i] = lerp(height[i], targetVal, falloff*0.4);
+        }
+      }
+    }
+    dirty = true;
+  }
+
+  // ---------- Color mapping ----------
+  const STOPS = [
+    {t:0.00, c:[198,182,133]},
+    {t:0.05, c:[186,183,110]},
+    {t:0.18, c:[99,150,83]},
+    {t:0.38, c:[157,171,66]},
+    {t:0.58, c:[201,168,106]},
+    {t:0.75, c:[169,116,74]},
+    {t:0.88, c:[143,138,130]},
+    {t:1.00, c:[245,242,234]}
+  ];
+  function colorFor(h){
+    for(let i=0;i<STOPS.length-1;i++){
+      const a=STOPS[i], b=STOPS[i+1];
+      if(h>=a.t && h<=b.t){
+        const f=(h-a.t)/(b.t-a.t);
+        return [
+          Math.round(lerp(a.c[0],b.c[0],f)),
+          Math.round(lerp(a.c[1],b.c[1],f)),
+          Math.round(lerp(a.c[2],b.c[2],f))
+        ];
+      }
+    }
+    return STOPS[STOPS.length-1].c;
+  }
+  const LUT = new Uint8Array(256*3);
+  for(let i=0;i<256;i++){
+    const c = colorFor(i/255);
+    LUT[i*3]=c[0]; LUT[i*3+1]=c[1]; LUT[i*3+2]=c[2];
+  }
+
+  // ---------- Texture canvas (color base, upscaled) ----------
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = COLS; baseCanvas.height = ROWS;
+  const bctx = baseCanvas.getContext("2d");
+  const baseImgData = bctx.createImageData(COLS, ROWS);
+
+  const TEX_W = 512, TEX_H = Math.round(512*ROWS/COLS);
+  const texCanvas = document.createElement("canvas");
+  texCanvas.width = TEX_W; texCanvas.height = TEX_H;
+  const tctx = texCanvas.getContext("2d");
+
+  function renderBaseColors(){
+    const data = baseImgData.data;
+    for(let i=0;i<N;i++){
+      const lutIdx = Math.round(clamp(height[i],0,1)*255);
+      const p = i*4;
+      data[p]=LUT[lutIdx*3]; data[p+1]=LUT[lutIdx*3+1]; data[p+2]=LUT[lutIdx*3+2]; data[p+3]=255;
+    }
+    bctx.putImageData(baseImgData,0,0);
+  }
+
+  // ---------- Marching squares contours ----------
+  function edgePoint(v1,v2,x1,y1,x2,y2,t){
+    const f = clamp((t-v1)/(v2-v1||1e-6),0,1);
+    return [lerp(x1,x2,f), lerp(y1,y2,f)];
+  }
+  function marchLevel(level, segs){
+    for(let y=0;y<ROWS-1;y++){
+      for(let x=0;x<COLS-1;x++){
+        const nw = height[idx(x,y)];
+        const ne = height[idx(x+1,y)];
+        const se = height[idx(x+1,y+1)];
+        const sw = height[idx(x,y+1)];
+        let c = 0;
+        if(nw>level) c|=8;
+        if(ne>level) c|=4;
+        if(se>level) c|=2;
+        if(sw>level) c|=1;
+        if(c===0||c===15) continue;
+        const N_ = edgePoint(nw,ne, x,y, x+1,y, level);
+        const E_ = edgePoint(ne,se, x+1,y, x+1,y+1, level);
+        const S_ = edgePoint(sw,se, x,y+1, x+1,y+1, level);
+        const W_ = edgePoint(nw,sw, x,y, x,y+1, level);
+        switch(c){
+          case 1: segs.push(W_,S_); break;
+          case 2: segs.push(S_,E_); break;
+          case 3: segs.push(W_,E_); break;
+          case 4: segs.push(N_,E_); break;
+          case 5: segs.push(N_,W_); segs.push(S_,E_); break;
+          case 6: segs.push(N_,S_); break;
+          case 7: segs.push(N_,W_); break;
+          case 8: segs.push(N_,W_); break;
+          case 9: segs.push(N_,S_); break;
+          case 10: segs.push(N_,E_); segs.push(S_,W_); break;
+          case 11: segs.push(N_,E_); break;
+          case 12: segs.push(W_,E_); break;
+          case 13: segs.push(S_,E_); break;
+          case 14: segs.push(W_,S_); break;
+        }
+      }
+    }
+  }
+  function computeContours(intervalMeters){
+    const levels = [];
+    const step = intervalMeters/50;
+    for(let lv=step; lv<1; lv+=step) levels.push(lv);
+    const bundles = [];
+    levels.forEach((lv, li)=>{
+      const segs = [];
+      marchLevel(lv, segs);
+      bundles.push({level:lv, segs, bold:(li+1)%5===0});
+    });
+    return bundles;
+  }
+
+  let contourOn = true;
+  let intervalM = 5;
+
+  function rebuildTexture(){
+    renderBaseColors();
+    tctx.imageSmoothingEnabled = true;
+    tctx.clearRect(0,0,TEX_W,TEX_H);
+    tctx.drawImage(baseCanvas,0,0,COLS,ROWS,0,0,TEX_W,TEX_H);
+    if(contourOn){
+      const bundles = computeContours(intervalM);
+      const sx = TEX_W/COLS, sy = TEX_H/ROWS;
+      bundles.forEach(bundle=>{
+        tctx.beginPath();
+        tctx.strokeStyle = bundle.bold ? "rgba(30,24,10,0.65)" : "rgba(30,24,10,0.32)";
+        tctx.lineWidth = bundle.bold ? 2.2 : 1.1;
+        for(let i=0;i<bundle.segs.length;i+=2){
+          const a=bundle.segs[i], b=bundle.segs[i+1];
+          tctx.moveTo(a[0]*sx, a[1]*sy);
+          tctx.lineTo(b[0]*sx, b[1]*sy);
+        }
+        tctx.stroke();
+      });
+    }
+    terrainTexture.needsUpdate = true;
+  }
+
+  // ---------- Three.js scene ----------
+  const stage = document.getElementById("stage");
+  const canvas = document.getElementById("sandbox");
+  const loadingEl = document.getElementById("loading");
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0f1113);
+  scene.fog = new THREE.Fog(0x0f1113, 120, 260);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+  camera.position.set(0, 62, 92);
+
+  const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xfff2d0, 1.0);
+  sun.position.set(60, 90, 40);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x88aacc, 0.35);
+  fill.position.set(-60,40,-60);
+  scene.add(fill);
+
+  // Terrain geometry (manual, row-major matching idx())
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(N*3);
+  const uvs = new Float32Array(N*2);
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      const i = idx(x,y);
+      positions[i*3]   = x - COLS/2;
+      positions[i*3+1] = height[i]*HEIGHT_SCALE;
+      positions[i*3+2] = y - ROWS/2;
+      uvs[i*2]   = x/(COLS-1);
+      uvs[i*2+1] = 1 - y/(ROWS-1);
+    }
+  }
+  const indices = [];
+  for(let y=0;y<ROWS-1;y++){
+    for(let x=0;x<COLS-1;x++){
+      const a = idx(x,y), b = idx(x+1,y), c = idx(x,y+1), d = idx(x+1,y+1);
+      indices.push(a,b,c);
+      indices.push(b,d,c);
+    }
+  }
+  geometry.setIndex(indices);
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions,3));
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs,2));
+  geometry.computeVertexNormals();
+
+  const terrainTexture = new THREE.CanvasTexture(texCanvas);
+  terrainTexture.minFilter = THREE.LinearFilter;
+  terrainTexture.magFilter = THREE.LinearFilter;
+
+  const material = new THREE.MeshStandardMaterial({
+    map: terrainTexture,
+    side: THREE.DoubleSide,
+    roughness: 0.92,
+    metalness: 0.02
+  });
+  const terrainMesh = new THREE.Mesh(geometry, material);
+  scene.add(terrainMesh);
+
+  // Base/skirt to give the block a physical "sandbox" feel
+  const skirtGeo = new THREE.BoxGeometry(COLS+2, 6, ROWS+2);
+  const skirtMat = new THREE.MeshStandardMaterial({color:0x2b2f33, roughness:0.95});
+  const skirt = new THREE.Mesh(skirtGeo, skirtMat);
+  skirt.position.y = -3.05;
+  scene.add(skirt);
+
+  // Sea — permanently occupies the lowest possible value (0 m), animated with waves,
+  // tinted by depth (deep offshore vs. shallow shore) and foam near breaking crests.
+  const SEA_SEG_X = 70, SEA_SEG_Z = 46;
+  const seaGeo = new THREE.PlaneGeometry(COLS*3, ROWS*3, SEA_SEG_X, SEA_SEG_Z);
+  seaGeo.rotateX(-Math.PI/2);
+  const seaBasePos = seaGeo.getAttribute("position").array.slice(); // original flat x,y,z per vertex
+  const seaVertCount = seaGeo.getAttribute("position").count;
+  const seaColors = new Float32Array(seaVertCount*3);
+  seaGeo.setAttribute("color", new THREE.BufferAttribute(seaColors,3));
+
+  const seaMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    transparent:true,
+    opacity:0.88,
+    roughness:0.2,
+    metalness:0.05,
+    side:THREE.DoubleSide,
+    clearcoat:0.3
+  });
+  const seaMesh = new THREE.Mesh(seaGeo, seaMat);
+  seaMesh.position.y = 0; // 0 m = sea level = the lowest possible terrain value
+  scene.add(seaMesh);
+  let waveAmplitude = 0.5; // scaled by the "Oleaje" slider
+
+  // Depth color ramp: t=0 deep open ocean -> t=1 very shallow shoreline water
+  const DEPTH_STOPS = [
+    {t:0.00, c:[7,30,55]},
+    {t:0.45, c:[16,64,100]},
+    {t:0.75, c:[52,132,152]},
+    {t:1.00, c:[140,198,198]}
+  ];
+  function depthColorFor(t){
+    t = clamp(t,0,1);
+    for(let i=0;i<DEPTH_STOPS.length-1;i++){
+      const a=DEPTH_STOPS[i], b=DEPTH_STOPS[i+1];
+      if(t>=a.t && t<=b.t){
+        const f=(t-a.t)/(b.t-a.t);
+        return [lerp(a.c[0],b.c[0],f), lerp(a.c[1],b.c[1],f), lerp(a.c[2],b.c[2],f)];
+      }
+    }
+    return DEPTH_STOPS[DEPTH_STOPS.length-1].c;
+  }
+
+  // How "land-like" the point under each sea vertex is: bilinear terrain sample
+  // inside the island, smoothly deepening beyond its edges outside it.
+  function sampleLand(x,z){
+    const gx = x + COLS/2;
+    const gz = z + ROWS/2;
+    if(gx>=0 && gx<=COLS-1 && gz>=0 && gz<=ROWS-1){
+      const x0 = Math.floor(gx), x1 = Math.min(COLS-1,x0+1);
+      const z0 = Math.floor(gz), z1 = Math.min(ROWS-1,z0+1);
+      const fx = gx-x0, fz = gz-z0;
+      const h00=height[idx(x0,z0)], h10=height[idx(x1,z0)];
+      const h01=height[idx(x0,z1)], h11=height[idx(x1,z1)];
+      const h0 = lerp(h00,h10,fx), h1 = lerp(h01,h11,fx);
+      return lerp(h0,h1,fz);
+    }
+    const dx = gx<0 ? -gx : (gx>COLS-1 ? gx-(COLS-1) : 0);
+    const dz = gz<0 ? -gz : (gz>ROWS-1 ? gz-(ROWS-1) : 0);
+    const dist = Math.sqrt(dx*dx+dz*dz);
+    return -Math.min(1, dist/25);
+  }
+
+  let seaLandH = new Float32Array(seaVertCount);
+  function recomputeSeaLandH(){
+    for(let i=0;i<seaVertCount;i++){
+      const x = seaBasePos[i*3], z = seaBasePos[i*3+2];
+      seaLandH[i] = sampleLand(x,z);
+    }
+  }
+
+  function animateSea(t){
+    const posArr = seaGeo.getAttribute("position").array;
+    const colArr = seaGeo.getAttribute("color").array;
+    for(let i=0;i<seaVertCount;i++){
+      const x = seaBasePos[i*3];
+      const z = seaBasePos[i*3+2];
+      const wave = Math.sin(x*0.12 + t*1.3)*0.4
+                 + Math.sin(z*0.17 - t*0.95)*0.3
+                 + Math.sin((x+z)*0.07 + t*0.55)*0.35;
+      const y = wave * waveAmplitude;
+      posArr[i*3+1] = y;
+
+      const landH = seaLandH[i];
+      const depthT = clamp((landH+1)/1.3, 0, 1);
+      const base = depthColorFor(depthT);
+
+      // Foam: strongest right at the shoreline, and only on wave crests;
+      // a faint whitecap sprinkle also appears far offshore at peak crests.
+      const waveNorm = clamp((wave/1.05 + 1)/2, 0, 1);
+      const crest = Math.max(0, (waveNorm-0.62)/0.38);
+      const shoreFactor = clamp(1 - Math.abs(landH+0.04)/0.3, 0, 1);
+      const foam = crest * (0.16 + 0.84*shoreFactor);
+
+      colArr[i*3]   = lerp(base[0], 255, foam)/255;
+      colArr[i*3+1] = lerp(base[1], 255, foam)/255;
+      colArr[i*3+2] = lerp(base[2], 255, foam)/255;
+    }
+    seaGeo.getAttribute("position").needsUpdate = true;
+    seaGeo.getAttribute("color").needsUpdate = true;
+    seaGeo.computeVertexNormals();
+  }
+
+  // Controls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0,4,0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 30;
+  controls.maxDistance = 220;
+  controls.maxPolarAngle = Math.PI*0.49;
+  controls.update();
+
+  function resize(){
+    const rect = stage.getBoundingClientRect();
+    camera.aspect = rect.width/rect.height;
+    camera.updateProjectionMatrix();
+    renderer.setSize(rect.width, rect.height, false);
+  }
+  window.addEventListener("resize", resize);
+
+  // ---------- Raycasting for sculpt ----------
+  const raycaster = new THREE.Raycaster();
+  const mouseNDC = new THREE.Vector2();
+  let hovering = false;
+  let hoverGX = null, hoverGY = null;
+  let shiftHeld = false;
+
+  window.addEventListener("keydown", (e)=>{ if(e.key==="Shift") shiftHeld=true; });
+  window.addEventListener("keyup", (e)=>{ if(e.key==="Shift") shiftHeld=false; });
+
+  const rx = document.getElementById("rx");
+  const ry = document.getElementById("ry");
+  const rz = document.getElementById("rz");
+
+  // Touch handling: with a finger there's no "hover" — a single finger sculpts,
+  // and a second finger hands control over to OrbitControls for rotate/zoom.
+  const activeTouches = new Set();
+  let lastTap = null; // {time, x, y} for manual double-tap detection
+
+  function updateFromEvent(e){
+    const rect = canvas.getBoundingClientRect();
+    mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
+    mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(mouseNDC, camera);
+    const hits = raycaster.intersectObject(terrainMesh, false);
+    if(hits.length>0){
+      const p = hits[0].point;
+      const gx = clamp(p.x + COLS/2, 0, COLS-1);
+      const gy = clamp(p.z + ROWS/2, 0, ROWS-1);
+      hovering = true;
+      hoverGX = gx; hoverGY = gy;
+      rx.textContent = Math.round(gx);
+      ry.textContent = Math.round(gy);
+      rz.textContent = Math.round(height[idx(Math.round(gx), Math.round(gy))]*50);
+      return true;
+    }
+    hovering = false;
+    return false;
+  }
+
+  function onPointerMove(e){
+    const isTouch = e.pointerType === "touch";
+    const hit = updateFromEvent(e);
+    if(!hit || !liveSculpt) return;
+    if(isTouch){
+      // Only sculpt with exactly one finger down; two+ fingers means "orbit/zoom", hands off.
+      if(activeTouches.size === 1) applyBrush(hoverGX, hoverGY, tool, shiftHeld);
+    } else {
+      // Mouse: sculpt on pure hover only, so click-drag stays free for OrbitControls.
+      if(e.buttons === 0) applyBrush(hoverGX, hoverGY, tool, shiftHeld);
+    }
+  }
+
+  canvas.addEventListener("pointerdown", (e)=>{
+    if(e.pointerType === "touch"){
+      activeTouches.add(e.pointerId);
+      if(activeTouches.size === 1 && updateFromEvent(e) && liveSculpt){
+        applyBrush(hoverGX, hoverGY, tool, shiftHeld);
+      }
+      // Manual double-tap detection (native dblclick isn't reliable from touch on all browsers).
+      const now = performance.now();
+      if(lastTap && now-lastTap.time < 350 && Math.hypot(e.clientX-lastTap.x, e.clientY-lastTap.y) < 24){
+        if(updateFromEvent(e)){
+          for(let k=0;k<4;k++) applyBrush(hoverGX, hoverGY, "smooth", false);
+        }
+        lastTap = null;
+      } else {
+        lastTap = {time:now, x:e.clientX, y:e.clientY};
+      }
+    }
+  });
+  canvas.addEventListener("pointerup", (e)=>{ if(e.pointerType==="touch") activeTouches.delete(e.pointerId); });
+  canvas.addEventListener("pointercancel", (e)=>{ if(e.pointerType==="touch") activeTouches.delete(e.pointerId); });
+
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerleave", ()=>{ hovering=false; });
+  canvas.addEventListener("dblclick", (e)=>{
+    if(hoverGX===null) return;
+    for(let k=0;k<4;k++) applyBrush(hoverGX,hoverGY,"smooth", false);
+  });
+
+  // On touch devices, a single finger sculpts — OrbitControls should only react to two fingers.
+  const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+  if(isTouchDevice){
+    controls.touches = { ONE: THREE.TOUCH.NONE, TWO: THREE.TOUCH.DOLLY_ROTATE };
+  }
+  function refreshHint(){
+    const dict = I18N[currentLang];
+    document.getElementById("hint").innerHTML = isTouchDevice ? dict.hintTouch : dict.hintMouse;
+  }
+
+  // ---------- UI wiring ----------
+  document.querySelectorAll(".tool").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".tool").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      tool = btn.dataset.tool;
+    });
+  });
+
+  const brushInput = document.getElementById("brush");
+  const vBrush = document.getElementById("vBrush");
+  brushInput.addEventListener("input", ()=>{ brushSize=+brushInput.value; vBrush.textContent=brushInput.value; });
+
+  const strengthInput = document.getElementById("strength");
+  const vStrength = document.getElementById("vStrength");
+  strengthInput.addEventListener("input", ()=>{ brushStrength=+strengthInput.value; vStrength.textContent=strengthInput.value; });
+
+  const intervalInput = document.getElementById("interval");
+  const vInterval = document.getElementById("vInterval");
+  intervalInput.addEventListener("input", ()=>{ intervalM=+intervalInput.value; vInterval.textContent=intervalInput.value; dirty=true; });
+
+  const waterInput = document.getElementById("waterLevel");
+  const vWater = document.getElementById("vWater");
+  waterInput.addEventListener("input", ()=>{
+    const wl = +waterInput.value;
+    vWater.textContent = wl;
+    waveAmplitude = (wl/100) * 0.9;
+  });
+
+  const swContour = document.getElementById("swContour");
+  swContour.addEventListener("click", ()=>{
+    contourOn = !contourOn;
+    swContour.classList.toggle("on", contourOn);
+    dirty = true;
+  });
+
+  const swWater = document.getElementById("swWater");
+  let waterOn = true;
+  swWater.addEventListener("click", ()=>{
+    waterOn = !waterOn;
+    swWater.classList.toggle("on", waterOn);
+    seaMesh.visible = waterOn;
+  });
+
+  const swLive = document.getElementById("swLive");
+  swLive.addEventListener("click", ()=>{
+    liveSculpt = !liveSculpt;
+    swLive.classList.toggle("on", liveSculpt);
+  });
+
+  const swSpin = document.getElementById("swSpin");
+  swSpin.addEventListener("click", ()=>{
+    controls.autoRotate = !controls.autoRotate;
+    swSpin.classList.toggle("on", controls.autoRotate);
+  });
+  controls.autoRotateSpeed = 0.6;
+
+  document.getElementById("btnReset").addEventListener("click", ()=>{
+    randomBumps(6 + Math.floor(Math.random()*4));
+  });
+  document.getElementById("btnFlat").addEventListener("click", flattenAll);
+
+  // ---------- DEM image upload ----------
+  const demInput = document.getElementById("demInput");
+  document.getElementById("btnLoadDem").addEventListener("click", ()=> demInput.click());
+  demInput.addEventListener("change", (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const img = new Image();
+    img.onload = ()=>{
+      const tmp = document.createElement("canvas");
+      tmp.width = COLS; tmp.height = ROWS;
+      const tctx2 = tmp.getContext("2d");
+      tctx2.drawImage(img, 0,0, COLS, ROWS);
+      const data = tctx2.getImageData(0,0,COLS,ROWS).data;
+      for(let i=0;i<N;i++){
+        const p = i*4;
+        const lum = (data[p]*0.299 + data[p+1]*0.587 + data[p+2]*0.114)/255;
+        height[i] = clamp(lum,0,1);
+      }
+      dirty = true;
+      snapshotBaseline();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  // ---------- Cut & fill ----------
+  let cellSizeM = 10;
+  const cellSizeInput = document.getElementById("cellSize");
+  const vCell = document.getElementById("vCell");
+  cellSizeInput.addEventListener("input", ()=>{
+    cellSizeM = +cellSizeInput.value;
+    vCell.textContent = cellSizeInput.value;
+  });
+  document.getElementById("btnBaseline").addEventListener("click", snapshotBaseline);
+
+  const volCutEl = document.getElementById("volCut");
+  const volFillEl = document.getElementById("volFill");
+  const volNetEl = document.getElementById("volNet");
+
+  function updateVolumes(){
+    const cellArea = cellSizeM*cellSizeM;
+    let cut = 0, fill = 0;
+    for(let i=0;i<N;i++){
+      const diffM = (height[i]-originalHeight[i])*50; // fraction -> meters
+      if(diffM>0) fill += diffM*cellArea;
+      else cut += -diffM*cellArea;
+    }
+    volCutEl.textContent = Math.round(cut).toLocaleString("es-CO");
+    volFillEl.textContent = Math.round(fill).toLocaleString("es-CO");
+    volNetEl.textContent = Math.round(fill-cut).toLocaleString("es-CO");
+  }
+
+  // ---------- Legend ----------
+  const legBar = document.getElementById("legBar");
+  const stopsCss = STOPS.map(s=>`rgb(${s.c[0]},${s.c[1]},${s.c[2]}) ${s.t*100}%`).join(", ");
+  legBar.style.background = `linear-gradient(90deg, ${stopsCss})`;
+
+  // ---------- Language toggle ----------
+  const I18N = {
+    es: {
+      pageTitle: "Caja de Arena Virtual 3D — Modelo Digital de Elevación Interactivo",
+      eyebrow: "Modelo digital de elevación / relieve 3D",
+      title: "Caja de Arena Virtual — 3D",
+      sub: "Pasa el cursor sobre el terreno para levantarlo o hundirlo automáticamente, sin necesidad de hacer clic — como la mano sobre la arena real. El mar ocupa siempre la cota más baja (0 m) y se mueve con oleaje. Arrastra para rotar la vista y usa la rueda para acercar. En celular: un dedo esculpe, dos dedos rotan y hacen zoom.",
+      loading: "Cargando motor 3D…",
+      labelX: "X", labelY: "Y", labelElev: "Elevación",
+      legMin: "0 m · mar",
+      hintMouse: "Arrastrar = rotar vista<br>Rueda = zoom<br>Shift + pasar = modo inverso",
+      hintTouch: "Un dedo = esculpir<br>Dos dedos = rotar / zoom<br>Doble toque = suavizar",
+      toolLabel: "Herramienta (se aplica al pasar el mouse)",
+      toolRaise: "▲ Levantar", toolLower: "▼ Hundir", toolSmooth: "〰 Suavizar", toolLevel: "▬ Nivelar",
+      liveLabel: "Escultura en vivo", liveDesc: "Activar al pasar el mouse",
+      brushLabel: "Pincel", brushSize: "Tamaño", brushStrength: "Fuerza",
+      contourLabel: "Curvas de nivel", contourDesc: "Mostrar curvas", intervalLabel: "Equidistancia",
+      seaLabel: "Mar", seaDesc: "Mostrar mar (nivel 0 m)", waveLabel: "Oleaje",
+      demLabel: "Terreno real (DEM)", demButton: "Cargar imagen de elevación",
+      demHint: "Sube una imagen en escala de grises (blanco = más alto). Puedes exportarla desde QGIS: Ráster → tu DEM → Exportar → PNG con rampa de grises.",
+      cutfillLabel: "Corte y relleno", cellSizeLabel: "Tamaño de celda", baselineButton: "Fijar estado base aquí",
+      cutLabel: "Corte:", fillLabel: "Relleno:", netLabel: "Neto:",
+      spinLabel: "Rotación automática",
+      resetButton: "Generar terreno nuevo", flatButton: "Aplanar todo",
+      footerHint: "El mouse esculpe el relieve sin clic; arrastra para rotar la cámara. En celular: un dedo esculpe, dos dedos rotan.",
+      footerCredit: 'Hecho por <a href="https://www.instagram.com/latopobyisa" target="_blank" rel="noopener">@latopobyisa</a>'
+    },
+    en: {
+      pageTitle: "Virtual 3D Sandbox — Interactive Digital Elevation Model",
+      eyebrow: "Digital elevation model / 3D relief",
+      title: "Virtual Sandbox — 3D",
+      sub: "Move the cursor over the terrain to raise or lower it automatically, no clicking needed — just like a hand over real sand. The sea always occupies the lowest point (0 m) and moves with waves. Drag to rotate the view and use the wheel to zoom. On mobile: one finger sculpts, two fingers rotate and zoom.",
+      loading: "Loading 3D engine…",
+      labelX: "X", labelY: "Y", labelElev: "Elevation",
+      legMin: "0 m · sea",
+      hintMouse: "Drag = rotate view<br>Wheel = zoom<br>Shift + hover = invert mode",
+      hintTouch: "One finger = sculpt<br>Two fingers = rotate / zoom<br>Double tap = smooth",
+      toolLabel: "Tool (applied as you hover)",
+      toolRaise: "▲ Raise", toolLower: "▼ Lower", toolSmooth: "〰 Smooth", toolLevel: "▬ Level",
+      liveLabel: "Live sculpting", liveDesc: "Enable on mouse hover",
+      brushLabel: "Brush", brushSize: "Size", brushStrength: "Strength",
+      contourLabel: "Contour lines", contourDesc: "Show contours", intervalLabel: "Interval",
+      seaLabel: "Sea", seaDesc: "Show sea (0 m level)", waveLabel: "Waves",
+      demLabel: "Real terrain (DEM)", demButton: "Upload elevation image",
+      demHint: "Upload a grayscale image (white = highest). You can export one from QGIS: Raster → your DEM → Export → PNG with a grayscale ramp.",
+      cutfillLabel: "Cut & fill", cellSizeLabel: "Cell size", baselineButton: "Set baseline here",
+      cutLabel: "Cut:", fillLabel: "Fill:", netLabel: "Net:",
+      spinLabel: "Auto-rotate",
+      resetButton: "Generate new terrain", flatButton: "Flatten all",
+      footerHint: "The mouse sculpts the relief without clicking; drag to rotate the camera. On mobile: one finger sculpts, two fingers rotate.",
+      footerCredit: 'Made by <a href="https://www.instagram.com/latopobyisa" target="_blank" rel="noopener">@latopobyisa</a>'
+    }
+  };
+  let currentLang = "es";
+
+  function applyLanguage(lang){
+    currentLang = lang;
+    const dict = I18N[lang];
+    document.title = dict.pageTitle;
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(el=>{
+      const key = el.dataset.i18n;
+      if(dict[key] !== undefined) el.innerHTML = dict[key];
+    });
+    document.querySelectorAll(".langBtn").forEach(b=> b.classList.toggle("active", b.dataset.lang===lang));
+    refreshHint();
+  }
+
+  document.querySelectorAll(".langBtn").forEach(btn=>{
+    btn.addEventListener("click", ()=> applyLanguage(btn.dataset.lang));
+  });
+
+  // ---------- Main loop ----------
+  const posAttr = geometry.getAttribute("position");
+
+  function updateGeometryHeights(){
+    for(let i=0;i<N;i++){
+      posAttr.array[i*3+1] = height[i]*HEIGHT_SCALE;
+    }
+    posAttr.needsUpdate = true;
+    geometry.computeVertexNormals();
+  }
+
+  const clock = new THREE.Clock();
+
+  function animate(){
+    requestAnimationFrame(animate);
+    if(dirty){
+      updateGeometryHeights();
+      rebuildTexture();
+      recomputeSeaLandH();
+      updateVolumes();
+      dirty = false;
+    }
+    animateSea(clock.getElapsedTime());
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  // ---------- Init ----------
+  randomBumps(7);
+  resize();
+  rebuildTexture();
+  updateGeometryHeights();
+  recomputeSeaLandH();
+  updateVolumes();
+  applyLanguage("es");
+  loadingEl.style.display = "none";
+  animate();
+})();
+</script>
+
+</body>
+</html>
